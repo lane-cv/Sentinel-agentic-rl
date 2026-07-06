@@ -96,3 +96,30 @@ DIAGNOSIS_JSON_SCHEMA = {
         "also_code_fix": {"type": "boolean"},
     },
 }
+
+
+class FixResult(BaseModel):
+
+    verified: bool
+    pr_url: Optional[str] = None
+    build_cmd: Optional[str] = None
+    test_cmd: Optional[str] = None
+    verify_log: Optional[str] = None
+    changed_files: list[str] = Field(default_factory=list)
+    degraded: Optional[str] = None
+
+
+FIX_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["verified", "changed_files"],
+    "properties": {
+        "verified": {"type": "boolean"},
+        "pr_url": {"type": ["string", "null"]},
+        "build_cmd": {"type": ["string", "null"]},
+        "test_cmd": {"type": ["string", "null"]},
+        "verify_log": {"type": ["string", "null"]},
+        "changed_files": {"type": "array", "items": {"type": "string"}},
+        "degraded": {"type": ["string", "null"]},
+    },
+}
