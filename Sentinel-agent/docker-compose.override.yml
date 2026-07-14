@@ -1,0 +1,25 @@
+services:
+  flagd:
+    ports: !override
+      - "8013:8013"
+      - "8016:8016"
+
+  jaeger:
+    ports: !override
+      - "16686:16686"
+
+  kafka:
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+  fraud-detection:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+  opensearch:
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
