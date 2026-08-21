@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendation
+  namespace: otel-demo
+  labels:
+    app: recommendation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recommendation
+  template:
+    metadata:
+      labels:
+        app: recommendation
+    spec:
+      containers:
+        - name: recommendation
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: LOAD_RPS
+              value: "400"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: recommendation
+  namespace: otel-demo
+  labels:
+    app: recommendation
+spec:
+  selector:
+    app: recommendation
+  ports:
+    - port: 8080
+      targetPort: 8080
