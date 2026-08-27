@@ -108,12 +108,13 @@ def _remediation_block() -> str:
 
 
 def diagnose_prompt(alert: dict) -> str:
+    observed_alert = {key: value for key, value in alert.items() if key != "scenario_hint"}
     return f"""\
 请诊断以下告警。参考对应类型的排查手册 Skill，用只读命令收集 Prometheus/Jaeger/logs/git 证据定位根因；若根因明确且止血手段属于低风险白名单，直接执行止血；最后输出结构化诊断。
 
 告警内容：
 ```json
-{json.dumps(alert, ensure_ascii=False, indent=2)}
+{json.dumps(observed_alert, ensure_ascii=False, indent=2)}
 ```
 """
 
