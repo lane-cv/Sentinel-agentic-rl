@@ -436,6 +436,23 @@ def test_generate_historical_reverse_derivation_supplement_v1_resource_seeds_use
         assert "flag=kafkaQueueProblems" in alert["scenario_hint"]
 
 
+def test_generate_historical_reverse_derivation_supplement_v1_leak_seed_has_no_flag_marker():
+    cold_start_tests_dir = Path(__file__).resolve().parent.parent.parent / "cold_start"
+    if str(cold_start_tests_dir) not in sys.path:
+        sys.path.insert(0, str(cold_start_tests_dir))
+    import fault_injection as fi
+
+    results = gs.generate_historical_reverse_derivation_supplement_v1()
+    leak_alerts = [alert for alert, kind in results if kind == "deploy_regression"]
+    assert len(leak_alerts) == 1
+    leak_alert = leak_alerts[0]
+    assert leak_alert["service"] == "recommendation"
+    assert fi.parse_flags(leak_alert["scenario_hint"]) == []
+    text = leak_alert["annotations"]["summary"] + leak_alert["annotations"]["description"]
+    assert any(k in text for k in fi._HIST_LEAK_KEYWORDS)
+    assert not any(k in text for k in fi._HIST_CERT_KEYWORDS)
+
+
 def test_generate_historical_reverse_derivation_supplement_v1_is_deterministic():
     r1 = gs.generate_historical_reverse_derivation_supplement_v1()
     r2 = gs.generate_historical_reverse_derivation_supplement_v1()
