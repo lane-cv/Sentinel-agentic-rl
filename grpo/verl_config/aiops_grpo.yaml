@@ -1,0 +1,52 @@
+algorithm:
+  adv_estimator: grpo
+  norm_adv_by_std_in_grpo: true
+  use_kl_in_reward: false
+
+actor_rollout_ref:
+  model:
+    path: /path/to/Qwen3.5-9B-text-only
+    use_remove_padding: true
+    enable_gradient_checkpointing: true
+    lora_rank: 16
+    lora_alpha: 32
+    target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj, in_proj_qkv, in_proj_z, in_proj_b, in_proj_a, out_proj]
+    use_shm: true
+  actor:
+    use_kl_loss: true
+    kl_loss_coef: 0.001
+    kl_loss_type: low_var_kl
+    optim:
+      lr: 1.0e-6
+  rollout:
+    n: 6
+    multi_turn:
+      enable: true
+      max_assistant_turns: 12
+      max_user_turns: 12
+      tool_config_path: verl_adapter/tool_config.yaml
+    name: vllm
+    tensor_model_parallel_size: 1
+    gpu_memory_utilization: 0.6
+
+  ref:
+    fsdp_config:
+      param_offload: true
+
+reward:
+  custom_reward_function:
+    path: grpo/verl_reward_adapter.py
+    name: compute_score
+  reward_manager:
+    name: naive
+
+trainer:
+  project_name: aiops-diagnosis-grpo
+  experiment_name: qwen3_5_9b_lora_grpo
+  logger: ["console"]
+  n_gpus_per_node: 2
+  nnodes: 1
+  save_freq: 20
+  test_freq: 5
+  total_epochs: 15
+  max_actor_ckpt_to_keep: 2
