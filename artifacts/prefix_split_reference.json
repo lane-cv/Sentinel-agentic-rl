@@ -1,0 +1,15 @@
+{
+  "note": "External comparison values for 120 trajectories. Local evaluation uses five mock trajectories.",
+  "full_trajectories": 120,
+  "avg_steps_per_trajectory": 8.2,
+  "prefix_split_subsamples": 990,
+  "termination_decision_accuracy_no_split": 0.55,
+  "termination_decision_accuracy_prefix_split": 0.88,
+  "avg_tool_call_rounds_no_split": ">10",
+  "avg_tool_call_rounds_prefix_split": 5.6,
+  "source": {
+    "revision": "b98839fc405f31be6ac5ca08008f7cb9289484d6",
+    "path": "eval/ablations/no_prefix_split.py",
+    "symbol": "DOC_REFERENCE"
+  }
+}
