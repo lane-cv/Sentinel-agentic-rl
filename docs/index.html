@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f8f8f2">
+  <meta name="description" content="查看 Sentinel Agentic RL 如何从服务告警中收集故障证据，并将诊断轨迹用于模型训练。">
+  <title>Sentinel Agentic RL · 运维诊断与强化学习</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%2315221b'/%3E%3Cpath d='m7 24 7-10 6 12 7-13 5 6' fill='none' stroke='%23c4f46a' stroke-width='4'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">跳至主要内容</a>
+  <header class="top">
+    <div class="wrap navrow">
+      <a class="brand" href="#main" aria-label="Sentinel 首页"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>Sentinel</a>
+      <nav aria-label="主导航"><a href="#replay">诊断回放</a><a href="#training">训练流程</a><a href="#run">本地运行</a></nav>
+      <a class="repo navrepo" href="https://github.com/lane-cv/Sentinel-agentic-rl" target="_blank" rel="noopener noreferrer"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path id="github-mark" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.43 7.43 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> GitHub 仓库 <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+  <main id="main">
+    <div class="wrap">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="herocopy">
+          <p class="kicker"><span class="dash"></span>AIOps / 强化学习</p>
+          <h1 id="hero-title"><span>Sentinel</span><span>Agentic RL<span class="dot">.</span></span></h1>
+          <p class="hero-text">一条服务告警，如何变成训练样本？跟随诊断 Agent 查询指标、链路与日志，逐步定位故障，再用排查轨迹训练模型。</p>
+          <div class="actions"><a class="btn primary" href="#replay">探索诊断回放 <span aria-hidden="true">↓</span></a><a class="textlink" href="#run">本地运行 <span aria-hidden="true">↘</span></a></div>
+        </div>
+        <figure class="map">
+          <div class="maphead"><span class="instrument"><i></i><i></i><i></i></span><strong>服务调用拓扑</strong><span class="map-type">架构示意</span></div>
+          <canvas id="topology" width="640" height="330" role="img" aria-label="服务拓扑示意图，突出显示待排查的 product-catalog 节点">待排查的服务节点为 product-catalog。</canvas>
+          <figcaption><span><i class="square bright"></i>待排查服务</span><span><i class="square"></i>关联服务</span><code>product-catalog</code></figcaption>
+        </figure>
+      </section>
+      <dl class="stats">
+        <div><dt>内置告警场景</dt><dd>13</dd></div>
+        <div><dt>完整数据集 · SFT 样本</dt><dd>667</dd></div>
+        <div><dt>LoRA 权重组</dt><dd>4</dd></div>
+      </dl>
+      <section class="section replay" id="replay" aria-labelledby="replay-title">
+        <div class="sec-head"><div><p class="kicker"><span class="dash"></span>DIAGNOSIS REPLAY</p><h2 id="replay-title">诊断回放</h2></div><p>选择一条内置模拟告警，按排查顺序查看证据与处置结果。</p></div>
+        <div class="replay-box">
+          <div class="case-picker"><h3>模拟告警</h3><div id="case-buttons" role="group" aria-label="选择模拟告警" hidden></div><noscript>请启用 JavaScript 切换告警和查看后续步骤。</noscript></div>
+          <article class="reader">
+            <div class="reader-head"><code id="service">product-catalog</code><span id="progress">步骤 1 / 5</span></div>
+            <div id="step-content" aria-live="polite" aria-atomic="true"><p class="step-tool" id="tool">容器状态</p><h3 id="step-title">确认异常容器</h3><p id="observation">商品目录容器的健康检查失败。先确认服务可用性，再查看错误率是否同时上升。</p></div>
+            <div class="reader-controls" hidden id="controls"><div class="segments" aria-hidden="true" id="segments"></div><div class="arrows"><button type="button" id="previous" aria-label="上一步">←</button><button type="button" id="next" aria-label="下一步">→</button></div></div>
+          </article>
+        </div>
+      </section>
+      <section class="section" id="training" aria-labelledby="training-title">
+        <div class="sec-head"><div><p class="kicker"><span class="dash"></span>TRAINING PIPELINE</p><h2 id="training-title">从轨迹到策略</h2></div><p>保留每一步工具调用和观察结果，让模型既能学习排查顺序，也能根据诊断结果调整策略。</p></div>
+        <div class="pipeline">
+          <article><span class="pipe-tag">TRAJECTORY</span><h3>收集与筛选</h3><p>把告警、工具调用、返回的证据和最终路由记成轨迹，经筛选后用于准备训练数据。</p></article>
+          <article><span class="pipe-tag">SFT</span><h3>学习下一步动作</h3><p>按决策位置切分轨迹前缀。从 63 条已筛选轨迹重建 667 条监督微调样本。</p></article>
+          <article><span class="pipe-tag">GRPO</span><h3>用奖励调整策略</h3><p>结合工具使用和最终诊断计算奖励。训练划分包含 74 条告警，另留 22 条用于评测。</p></article>
+        </div>
+      </section>
+      <section class="section run" id="run" aria-labelledby="run-title">
+        <div><p class="kicker"><span class="dash"></span>QUICK START</p><h2 id="run-title">在本地跑一次</h2><p>在项目根目录用 Python 3.11 和 Bash 执行这些命令。首次安装依赖后，用 CPU 即可跑通模拟告警的数据处理与评测。</p><p class="output">评测结果写入 <code>smoke_test/out/baseline_comparison.json</code></p></div>
+        <div class="terminal"><div class="term-head"><span>终端 / Bash</span><button type="button" id="copy" hidden>复制命令</button></div><pre tabindex="0"><code id="commands">python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+bash smoke_test/run_smoke.sh</code></pre><span id="copy-status" class="sr" role="status"></span></div>
+      </section>
+    </div>
+  </main>
+  <footer><div class="wrap"><a class="brand footer-brand" href="#main">Sentinel Agentic RL<span class="dot">.</span></a><a class="textlink" href="https://github.com/lane-cv/Sentinel-agentic-rl" target="_blank" rel="noopener noreferrer"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><use href="#github-mark"/></svg> 打开 GitHub 仓库 <span aria-hidden="true">↗</span></a></div></footer>
+</body>
+</html>
