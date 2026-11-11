@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111612">
+  <meta name="description" content="切换三段告警回放，跟随 Sentinel agent 观察信号、收集证据，直到处置结果。">
+  <title>Sentinel agent · 告警回放</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --night: #111612;
+      --chalk: #f2f3e8;
+      --muted: #b5bfb3;
+      --line: #354036;
+      --lime: #d7fb89;
+      --paper: #eeefe6;
+      --ink: #17221a;
+      --mono: 'IBM Plex Mono', Menlo, Consolas, monospace;
+      --sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 18px; }
+    body { margin: 0; color: var(--chalk); background: var(--night); font: 16px/1.55 var(--sans); }
+    a { color: inherit; text-decoration: none; }
+    button, summary { font: inherit; cursor: pointer; }
+    button { color: inherit; }
+    a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid #ed9c54; outline-offset: 4px; }
+    [hidden] { display: none !important; }
+    .wrap { max-width: 1430px; margin: 0 auto; padding-inline: clamp(20px,5vw,78px); }
+    .skip { position: fixed; top: -5em; left: 12px; z-index: 20; background: var(--lime); color: var(--ink); padding: .5em 1em; }
+    .skip:focus { top: 8px; }
+    .night { position: relative; isolation: isolate; background: radial-gradient(ellipse at 80% 38%, #202a20 0, #151b15 34%, var(--night) 70%); }
+    .mast { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 73px; border-bottom: 1px solid var(--line); }
+    .brand, nav, .repo, .mode, .controls, .play, .next { display: flex; align-items: center; }
+    .brand { gap: 10px; font-size: 18px; letter-spacing: -.055em; font-weight: 700; white-space: nowrap; }
+    .brand i { position: relative; width: 26px; height: 24px; display: block; overflow: hidden; transform: skew(-18deg); }
+    .brand i::before, .brand i::after { content: ''; position: absolute; width: 5px; height: 19px; top: 3px; left: 4px; background: var(--lime); box-shadow: 7px -4px var(--lime); }
+    .brand i::after { left: 18px; top: 6px; box-shadow: none; }
+    nav { gap: clamp(14px,2.5vw,40px); font-size: 14px; }
+    nav > a:hover, .next:hover { color: var(--lime); }
+    .repo { gap: 6px; white-space: nowrap; border: 1px solid #606f60; border-radius: 30px; padding: 6px 14px; }
+    .repo:hover { border-color: var(--lime); }
+    .hero { display: grid; grid-template-columns: minmax(0,.86fr) minmax(0,1.28fr); align-items: center; gap: clamp(22px,4vw,64px); padding: clamp(38px,5vw,78px) 0 34px; }
+    .intro { padding-bottom: 6px; }
+    .mode { gap: 10px; color: #cfddbe; font: 12px var(--mono); letter-spacing: .04em; }
+    .mode::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 10px #d7fb8966; }
+    h1 { margin: 23px 0 20px; font-size: clamp(74px,8.7vw,136px); line-height: .85; letter-spacing: -.088em; font-weight: 630; }
+    h1 em { display: block; margin-left: .03em; font-family: 'Instrument Serif', 'Baskerville', Georgia, serif; font-weight: 400; letter-spacing: -.075em; color: var(--lime); }
+    .intro p { max-width: 24em; line-height: 1.7; color: var(--muted); margin: 0; }
+    .controls { margin-top: 24px; gap: 22px; flex-wrap: wrap; }
+    .play, .next { border: 0; gap: 9px; font-size: 14px; font-weight: 650; }
+    .play { border-radius: 30px; padding: 11px 20px; background: var(--lime); color: #152117; }
+    .play:hover { background: #e7ffae; }
+    .play-icon { display: inline-block; width: 10px; height: 12px; border-left: 3px solid; border-right: 3px solid; }
+    .play[data-playing="false"] .play-icon { width: 0; height: 0; border: 6px solid transparent; border-left: 10px solid currentColor; border-right: 0; }
+    .next { padding: 8px 0; background: none; color: #d3dcca; }
+    .next span { font-size: 18px; }
+    .field { --scene: #ffc17a; margin: 0; position: relative; min-width: 0; }
+    .display {
+      padding: clamp(14px, 2vw, 26px);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(145deg, #20291f, #161c17 70%);
+    }
+    .plot-head, .rank-head, .quality, .gauge-pair { display: flex; align-items: center; }
+    .plot-head { justify-content: space-between; gap: 10px; border-bottom: 1px solid #384536; padding-bottom: 10px; font: 11px/1.4 var(--mono); color: var(--muted); }
+    .plot-head strong { font: inherit; color: var(--scene); overflow-wrap: anywhere; }
+    .plot-head span { flex-shrink: 0; }
+    .evidence { min-height: 232px; display: grid; align-content: center; padding-top: 14px; }
+    .gauge-pair { justify-content: space-around; gap: 16px; }
+    .gauge-cell { text-align: center; flex: 1; min-width: 0; }
+    .gauge-cell + .gauge-cell { border-left: 1px solid var(--line); }
+    .gauge-cell h2 { font: 13px var(--sans); color: var(--muted); margin: 0 0 14px; }
+    .dial { position: relative; width: min(76%, 154px); aspect-ratio: 2; margin: auto; overflow: hidden; }
+    .dial::before {
+      content: ''; position: absolute; inset: 0 0 auto; aspect-ratio: 1; border-radius: 50%;
+      background: repeating-conic-gradient(from -90deg, transparent 0deg 6.6deg, #1d251d 6.6deg 9deg),
+                  conic-gradient(from -90deg, var(--tint) 0deg var(--angle), #475546 var(--angle) 180deg, transparent 180deg);
+      mask: radial-gradient(farthest-side, transparent 82%, black 84%);
+    }
+    .dial::after { content: ''; position: absolute; left: calc(50% - 5px); bottom: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--tint); }
+    .needle { position: absolute; left: 50%; bottom: 0; width: 38%; height: 2px; background: var(--tint); transform-origin: left center; transform: rotate(calc(var(--angle) - 180deg)); }
+    #cpu-dial { --tint: #ffc17a; --angle: 162deg; }
+    #latency-dial { --tint: #d7fb89; --angle: 130deg; }
+    .gauge-cell strong { display: block; margin-top: 9px; font-size: clamp(17px, 2vw, 23px); letter-spacing: -.04em; }
+    .source { margin: 16px 0 0; color: #afbcac; font: 11px/1.45 var(--mono); }
+    .volume-head { display: flex; align-items: baseline; gap: 10px; }
+    .volume-head strong { color: var(--scene); font: 600 clamp(32px, 4.5vw, 58px)/1 var(--sans); letter-spacing: -.065em; }
+    .volume-head span, .rank-head strong { font-size: 14px; }
+    .volume { display: grid; grid-template-columns: 5.5em 1fr 3.2em; align-items: center; gap: 7px 12px; margin: 14px 0; font: 12px var(--sans); color: #dae2d5; }
+    .track { height: 10px; border-radius: 2px; background: #364236; overflow: hidden; }
+    .track i { display: block; height: 100%; transform: scaleX(var(--reveal, 1)); transform-origin: left; }
+    .baseline { width: 90.91%; background: #859582; }
+    .current { width: 93.64%; background: var(--scene); }
+    .volume b { font: 12px var(--mono); }
+    .quality { gap: 7px 18px; flex-wrap: wrap; font-size: 12px; color: #d3dece; }
+    .quality span::before { content: '✓'; color: var(--scene); margin-right: 4px; }
+    .rank-head { justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .compare { border: 1px solid #586358; color: var(--chalk); border-radius: 20px; padding: 3px 10px; font-size: 12px; background: transparent; }
+    .compare:hover { border-color: var(--scene); color: var(--scene); }
+    .rank-grid { display: grid; grid-template-columns: 22px 1fr; gap: 7px; }
+    .places, .products { display: grid; gap: 4px; margin: 0; list-style: none; padding: 0; }
+    .places span, .products li { display: flex; align-items: center; min-height: 32px; }
+    .places { font: 11px var(--mono); color: #afbcac; }
+    .products { position: relative; }
+    .products li { position: relative; justify-content: space-between; gap: 8px; padding: 4px 10px; border: 1px solid #455043; border-radius: 3px; background: #202820; font: 12px var(--mono); }
+    .products li[data-score="9"] { border-color: var(--scene); color: var(--scene); }
+    .products small { color: #d5dcd1; font: 11px var(--sans); }
+    .caption { margin: 14px 0 0; padding-left: 12px; border-left: 2px solid var(--scene); }
+    .caption strong { font-size: clamp(17px,1.7vw,24px); line-height: 1.3; font-weight: 620; letter-spacing: -.025em; }
+    .caption p { min-height: 3.1em; margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .stages { margin-top: 12px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+    .stages button { position: relative; padding: 9px 0 3px; text-align: left; border: 0; background: none; color: #a4afa1; font-size: 12px; }
+    .stages button::before, .stages button::after { content: ''; height: 2px; position: absolute; top: 0; left: 0; right: 0; background: #3e493e; }
+    .stages button::after { transform: scaleX(0); transform-origin: left; background: var(--scene); }
+    .stages button.past::after { transform: scaleX(1); }
+    .stages button[aria-current="step"] { color: var(--chalk); }
+    .stages button[aria-current="step"]::after { transform: scaleX(var(--progress,.08)); }
+    .stages button:hover { color: var(--scene); }
+    .scene-picker { padding: 0 0 34px; }
+    .scene-picker h2 { font: 13px/1.3 var(--sans); margin: 0 0 12px; color: #bac5b5; }
+    .scenes { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+    .scene { background: #1a211b; border: 1px solid #354036; border-radius: 5px; text-align: left; min-width: 0; padding: 14px clamp(10px,1.6vw,24px); display: flex; align-items: center; justify-content: space-between; gap: 12px; transition: background .2s,border-color .2s; }
+    .scene:hover { background: #252e24; }
+    .scene[aria-pressed="true"] { border-color: var(--tone); background: #283025; }
+    .scene small { font: 11px var(--mono); color: #c0c9ba; display: block; margin-bottom: 6px; overflow-wrap: anywhere; }
+    .scene strong { font-size: clamp(15px,1.55vw,21px); font-weight: 610; }
+    .scene::after { content: ''; width: 8px; height: 8px; flex: 0 0 auto; border: 1px solid #6c796b; border-radius: 50%; }
+    .scene[aria-pressed="true"]::after { border-color: var(--tone); background: var(--tone); }
+    #cpu { --tone: #ffc17a; } #trend { --tone: #a3dba5; } #rank { --tone: #c5b4fc; }
+    .paper { color-scheme: light; background: var(--paper); color: var(--ink); }
+    .route { display: grid; grid-template-columns: .82fr 1.3fr; gap: clamp(26px,6vw,100px); padding-block: clamp(42px,5.5vw,84px); }
+    .route h2 { margin: 0 0 12px; font-size: clamp(32px,4vw,60px); line-height: 1.1; letter-spacing: -.065em; }
+    .route header p { color: #465748; margin: 0; }
+    .route-list { min-width: 0; border-top: 1px solid #a7b5a4; }
+    .route details { border-bottom: 1px solid #b6c1b3; }
+    .route summary { display: flex; align-items: baseline; gap: 14px; list-style: none; padding: 13px 1px; font-weight: 650; font-size: 17px; }
+    .route summary::-webkit-details-marker { display: none; }
+    .route summary::after { content: '+'; margin-left: auto; font: 20px var(--mono); color: #4d634e; }
+    .route details[open] > summary::after { content: '−'; }
+    .route summary small { font: 11px var(--mono); color: #4f6452; }
+    .route details p { margin: 0 0 14px; color: #3e5141; font-size: 15px; }
+    code { font-family: var(--mono); overflow-wrap: anywhere; }
+    pre { overflow-x: auto; padding: 14px; border-radius: 4px; background: #dfe5d9; font: 12px/1.7 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .home-foot { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 17px 0 25px; border-top: 1px solid #bec8b8; font-size: 13px; }
+    .home-foot a { text-decoration: underline; text-underline-offset: 3px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    @media (max-width: 800px) {
+      .hero { grid-template-columns: minmax(0,.75fr) minmax(0,1.15fr); gap: 18px; }
+      h1 { font-size: clamp(65px,9vw,78px); }
+      .scene { gap: 4px; }
+    }
+    @media (max-width: 660px) {
+      .mast { min-height: 58px; }
+      nav { gap: 14px; font-size: 12px; }
+      .repo { padding: 4px 9px; }
+      .brand { font-size: 16px; gap: 5px; }
+      .hero { grid-template-columns: minmax(0,1fr); gap: 23px; padding: 28px 0 23px; }
+      h1 { margin: 14px 0 12px; font-size: clamp(56px,12vw,80px); line-height: .98; }
+      h1 em { display: inline; margin-left: .04em; }
+      .mode { font-size: 11px; }
+      .intro { padding-bottom: 0; }
+      .intro p { max-width: 32em; font-size: 14px; }
+      .controls { margin-top: 14px; gap: 16px; }
+      .play { padding: 8px 14px; }
+      .evidence { min-height: 215px; }
+      .caption { margin-top: 9px; }
+      .caption p { min-height: 3.05em; }
+      .scene-picker { padding-bottom: 24px; }
+      .scenes { gap: 6px; }
+      .scene { padding: 9px 8px; }
+      .scene small { margin-bottom: 3px; font-size: 10px; }
+      .scene small span { display: none; }
+      .route { grid-template-columns: minmax(0,1fr); gap: 22px; }
+    }
+    @media (max-width: 380px) {
+      .wrap { padding-inline: 15px; }
+      .brand i { display: none; }
+      nav { gap: 10px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: 0s !important; }
+    }
+  </style>
+</head>
+<body id="top">
+<a class="skip" href="#main">跳到告警回放</a>
+<main id="main">
+  <div class="night">
+    <div class="wrap">
+      <header class="mast">
+        <a class="brand" href="#top"><i aria-hidden="true"></i>Sentinel agent</a>
+        <nav aria-label="主导航">
+          <a href="#cases">场景</a><a href="#architecture">技术路线</a>
+          <a class="repo" href="https://github.com/lane-cv/Sentinel-agent.git" aria-label="在 GitHub 查看 Sentinel agent 源码">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.23.41-2.81-.55-2.99-1.05-.1-.26-.53-1.06-.91-1.27-.31-.17-.75-.59-.01-.6.7-.01 1.2.64 1.37.91.8 1.35 2.08.97 2.59.74.08-.58.31-.97.56-1.19-1.98-.23-4.05-.99-4.05-4.4 0-.97.35-1.77.92-2.39-.09-.23-.4-1.14.09-2.37 0 0 .75-.24 2.46.91A8.24 8.24 0 018 4.34c.68 0 1.36.09 2 .27 1.71-1.16 2.46-.91 2.46-.91.49 1.23.18 2.14.09 2.37.57.62.92 1.41.92 2.39 0 3.42-2.08 4.17-4.06 4.4.32.28.6.81.6 1.64 0 1.18-.01 2.13-.01 2.42 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8Z"/>
+            </svg>
+            <span>GitHub ↗</span>
+          </a>
+        </nav>
+      </header>
+      <section class="hero" aria-labelledby="title">
+        <div class="intro">
+          <div class="mode">AIOps · 告警回放</div>
+          <h1 id="title">Sentinel <em>agent</em></h1>
+          <p>CPU 拉满、流量上涨、推荐倒序。选一条告警，跟随 Agent 从第一个信号走到处置现场。</p>
+          <div class="controls" id="controls" hidden>
+            <button class="play" id="play" type="button"><i class="play-icon" aria-hidden="true"></i><span>暂停回放</span></button>
+            <button class="next" id="next" type="button">下一场<span aria-hidden="true">→</span></button>
+          </div>
+        </div>
+        <figure class="field" id="field" aria-label="告警样例的信号示意与诊断过程">
+          <div class="display">
+            <div class="plot-head"><strong id="event-name">S2 / HighCpuUsage</strong><span>样例回放</span></div>
+            <div class="evidence" id="cpu-evidence">
+              <div class="gauge-pair">
+                <div class="gauge-cell"><h2>CPU 负载</h2><div class="dial" id="cpu-dial" aria-hidden="true"><i class="needle"></i></div><strong>逼近上限</strong></div>
+                <div class="gauge-cell"><h2>p99 延迟</h2><div class="dial" id="latency-dial" aria-hidden="true"><i class="needle"></i></div><strong>随负载升高</strong></div>
+              </div>
+              <p class="source">alerts/s2.json · 指针示意告警描述中的变化方向</p>
+            </div>
+            <div class="evidence" id="trend-evidence" hidden>
+              <div class="volume-head"><strong>≈ +3%</strong><span>请求量周环比</span></div>
+              <div class="volume">
+                <span>上周同期</span><div class="track" aria-hidden="true"><i class="baseline"></i></div><b>100</b>
+                <span>当前请求量</span><div class="track" aria-hidden="true"><i class="current"></i></div><b>≈ 103</b>
+              </div>
+              <div class="quality"><span>错误率在目标内</span><span>p99 延迟在目标内</span></div>
+              <p class="source">alerts/s6_info.json · 以上周同期请求量为 100</p>
+            </div>
+            <div class="evidence" id="rank-evidence" hidden>
+              <div class="rank-head"><strong id="order-label">故障输出 · 低分在前</strong><button class="compare" id="compare" type="button">对照预期 ⇄</button></div>
+              <div class="rank-grid">
+                <div class="places" aria-hidden="true"><span>01</span><span>02</span><span>03</span></div>
+                <ol class="products" id="products" aria-labelledby="order-label">
+                  <li data-score="1">PRODUCT-0 <small>热度分 1</small></li>
+                  <li data-score="5">PRODUCT-2 <small>热度分 5</small></li>
+                  <li data-score="9">PRODUCT-1 <small>热度分 9</small></li>
+                </ol>
+              </div>
+              <p class="source">test_ranking.py · 同一组商品，比较两种排序方向</p>
+            </div>
+          </div>
+          <figcaption class="caption">
+            <strong id="stage-title">广告服务的 CPU 逼近上限</strong>
+            <p id="stage-copy">ad 服务持续高负载，p99 延迟也在上升。告警中没有近期发版记录。</p>
+          </figcaption>
+          <div class="stages" id="stages" role="group" aria-label="选择回放阶段" hidden>
+            <button type="button" aria-current="step">接收告警</button><button type="button">收集证据</button>
+            <button type="button">判断根因</button><button type="button">预期处置</button>
+          </div>
+        </figure>
+      </section>
+      <section class="scene-picker" id="cases" aria-labelledby="scene-title" hidden>
+        <h2 id="scene-title">切换告警现场</h2>
+        <div class="scenes" role="group" aria-labelledby="scene-title">
+          <button id="cpu" type="button" class="scene" aria-pressed="true"><span><small>S2<span> / ad</span></small><strong>CPU 异常</strong></span></button>
+          <button id="trend" type="button" class="scene" aria-pressed="false"><span><small>S6<span> / product-catalog</span></small><strong>流量上涨</strong></span></button>
+          <button id="rank" type="button" class="scene" aria-pressed="false"><span><small>S10<span> / recommendation</span></small><strong>排序回归</strong></span></button>
+        </div>
+      </section>
+      <p id="announcement" class="sr-only" role="status"></p>
+    </div>
+  </div>
+  <div class="paper">
+    <div class="wrap">
+      <section class="route" id="architecture" aria-labelledby="route-title">
+        <header><h2 id="route-title">技术路线</h2><p>回放背后，Agent 如何作出判断？</p></header>
+        <div class="route-list">
+          <details><summary>找到证据 <small>Observe</small></summary><p>告警按指纹去重。诊断 Agent 通过 Claude Agent SDK 调用工具，按手册查询 Prometheus 指标和 Jaeger 调用链，也可从 Milvus 检索相似工单。</p></details>
+          <details><summary>决定处置 <small>Decide</small></summary><p>Pydantic 校验诊断结构。置信度低于默认阈值 0.6 时转人工。信息类事件记录报告，线上操作由钩子核对命令与目标白名单。</p></details>
+          <details><summary>验证修复 <small>Verify</small></summary><p>修复 Agent 在配置的服务仓库中修改代码、运行构建和回归测试，验证通过后可发起 PR。评测脚本将实际路由与场景预期对照。</p></details>
+          <details id="start"><summary>本地运行 <small>Python 3.11</small></summary><p>在项目根目录安装依赖，复制配置模板并填写模型服务地址、模型名及鉴权信息。</p>
+            <pre><code>python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp -n .env.example .env</code></pre>
+            <p>配好模型后，可用这条信息类告警试跑一次。</p>
+            <pre><code>AIOPS_RAG_ENABLED=0 AIOPS_REMEDIATION_ENABLED=0 \
+  python -m agent.run --alert alerts/s6_info.json \
+  --json-out reports/s6_info.json</code></pre>
+          </details>
+        </div>
+      </section>
+      <footer class="home-foot"><span>Sentinel agent</span><a href="#top">返回回放 ↑</a></footer>
+    </div>
+  </div>
+</main>
+<script>
+  const scenes = [
+    {
+      id: 'cpu', event: 'S2 / HighCpuUsage', tone: '#ffc17a',
+      frames: [
+        ['广告服务的 CPU 逼近上限', 'ad 服务持续高负载，p99 延迟也在上升。告警中没有近期发版记录。'],
+        ['把请求量与 CPU 放在同一时间窗', '对照 Prometheus 的请求量、CPU 与延迟，再用容器指标核对当前占用。'],
+        ['核对广告服务的故障开关', '样例指向 adServiceHighCpu。检查 flagd 中的开关值，区分模拟负载和代码热点。'],
+        ['选择线上处置', '命令和目标都在白名单内时可自动执行并记录，否则把建议发给值班人员。']
+      ]
+    },
+    {
+      id: 'trend', event: 'S6 / InfoAdvisoryNoAction', tone: '#a3dba5',
+      frames: [
+        ['商品目录的请求量小幅上涨', '和上周同期相比，product-catalog 的请求量增加约 3%。'],
+        ['核对错误率和尾延迟', '两个指标都在服务目标范围内。流量变化没有伴随可用性下降。'],
+        ['识别为信息类事件', '样例描述的是正常流量波动，无需重启服务或修改代码。'],
+        ['生成报告，结束本次诊断', '预期路由为 info_only。报告保留证据与判断依据，供后续查询。']
+      ]
+    },
+    {
+      id: 'rank', event: 'S10 / RecommendationRankingRegression', tone: '#c5b4fc',
+      frames: [
+        ['冷门商品排到了推荐列表前面', '新排序功能上线后，热门商品反而沉底，服务的 CPU、内存和延迟都正常。'],
+        ['将异常与发布时间对齐', '核对部署记录，再用排序回归用例检查同一批商品的输出顺序。'],
+        ['检查排序方向', '沿着 ranking.py 的评分排序逻辑，确认高分商品是否被错误地排在后面。'],
+        ['验证排序修复，提交 PR', '修复 Agent 在配置的仓库运行回归测试。目标用例通过且没有新增失败时，才可提交修复 PR。']
+      ]
+    }
+  ];
+
+  const field = document.getElementById('field');
+  const evidence = scenes.map(scene => document.getElementById(scene.id + '-evidence'));
+  const cpuDial = document.getElementById('cpu-dial');
+  const latencyDial = document.getElementById('latency-dial');
+  const products = document.getElementById('products');
+  const compare = document.getElementById('compare');
+  const stageBar = document.getElementById('stages');
+  const steps = [...stageBar.querySelectorAll('button')];
+  const sceneButtons = [...document.querySelectorAll('.scene')];
+  const play = document.getElementById('play');
+  const preference = matchMedia('(prefers-reduced-motion: reduce)');
+  const duration = 5400;
+  let sceneIndex = 0;
+  let stage = 0;
+  let elapsed = 0;
+  let playing = !preference.matches;
+  let inView = true;
+  let frameId = 0;
+  let previous = null;
+  let paintedAt = 0;
+  function paintEvidence() {
+    const id = scenes[sceneIndex].id;
+    const progress = preference.matches || stage > 0 || (!playing && elapsed === 0) ? 1 : Math.min(1, elapsed / 1700);
+    const rise = 1 - (1 - progress) ** 3;
+    if (id === 'cpu') {
+      cpuDial.style.setProperty('--angle', (75 + 91 * rise) + 'deg');
+      latencyDial.style.setProperty('--angle', (46 + 86 * rise) + 'deg');
+    } else if (id === 'trend') {
+      evidence[sceneIndex].style.setProperty('--reveal', .85 + .15 * rise);
+    }
+  }
+
+  function showRanking(expected) {
+    const rows = [...products.children];
+    const order = [...rows].sort((a, b) => (Number(a.dataset.score) - Number(b.dataset.score)) * (expected ? -1 : 1));
+    if (rows[0] !== order[0]) {
+      const offsets = new Map(rows.map(row => [row, row.offsetTop]));
+      products.append(...order);
+      if (inView && !preference.matches) {
+        for (const row of rows) {
+          for (const old of row.getAnimations()) old.cancel();
+          const distance = offsets.get(row) - row.offsetTop;
+          if (distance) row.animate([{transform: 'translateY(' + distance + 'px)'}, {transform: 'none'}],
+                                    {duration: 550, easing: 'cubic-bezier(.25,.8,.25,1)'});
+        }
+      }
+    }
+    document.getElementById('order-label').textContent = expected ? '回归预期 · 高分在前' : '故障输出 · 低分在前';
+    compare.textContent = expected ? '查看故障 ⇄' : '对照预期 ⇄';
+  }
+  function updateView(announce = false) {
+    const scene = scenes[sceneIndex];
+    field.style.setProperty('--scene',scene.tone);
+    document.getElementById('event-name').textContent=scene.event;
+    evidence.forEach((panel, i) => { panel.hidden = i !== sceneIndex; });
+    if (scene.id === 'rank') showRanking(stage === 3);
+    document.getElementById('stage-title').textContent=scene.frames[stage][0];
+    document.getElementById('stage-copy').textContent=scene.frames[stage][1];
+    sceneButtons.forEach((button,i)=>button.setAttribute('aria-pressed',String(i===sceneIndex)));
+    steps.forEach((button,i)=>{
+      button.classList.toggle('past',i<stage);
+      if (i===stage) button.setAttribute('aria-current','step');
+      else button.removeAttribute('aria-current');
+    });
+    play.dataset.playing=String(playing);
+    play.querySelector('span').textContent=playing?'暂停回放':'播放回放';
+    stageBar.style.setProperty('--progress', Math.max(.08,elapsed/duration));
+    if (announce) document.getElementById('announcement').textContent=
+      sceneButtons[sceneIndex].querySelector('strong').textContent+'，'+scene.frames[stage][0];
+    paintEvidence();
+  }
+  function advanceScene(index) {
+    sceneIndex=index; stage=0; elapsed=0;
+  }
+  function tick(now) {
+    frameId=0;
+    if (!playing || !inView || document.hidden) { previous=null; return; }
+    const delta=previous===null?0:Math.min(now-previous,180);
+    previous=now; elapsed+=delta;
+    if (elapsed>=duration) {
+      elapsed=0;
+      if (stage===steps.length-1) advanceScene((sceneIndex+1)%scenes.length);
+      else stage++;
+      updateView();
+    }
+    if (now-paintedAt>45) {
+      paintedAt=now;
+      stageBar.style.setProperty('--progress',Math.max(.08,elapsed/duration));
+      if (stage === 0 && elapsed < 2000 && !preference.matches) paintEvidence();
+    }
+    frameId=requestAnimationFrame(tick);
+  }
+  function schedule() {
+    if (frameId) cancelAnimationFrame(frameId);
+    frameId=0; previous=null;
+    if (playing && inView && !document.hidden) frameId=requestAnimationFrame(tick);
+  }
+  function selectScene(index) {
+    advanceScene(index); updateView(true); schedule();
+  }
+  sceneButtons.forEach((button,index)=>button.addEventListener('click',()=>selectScene(index)));
+  function selectStage(index) {
+    stage=index; elapsed=0; playing=false; updateView(true); schedule();
+  }
+  steps.forEach((button,index)=>button.addEventListener('click',()=>selectStage(index)));
+  compare.addEventListener('click',()=>selectStage(stage === 3 ? 0 : 3));
+  play.addEventListener('click',()=>{ playing=!playing; updateView(); schedule(); });
+  document.getElementById('next').addEventListener('click',()=>selectScene((sceneIndex+1)%scenes.length));
+  function readHash() {
+    const index=scenes.findIndex(scene=>'#'+scene.id===location.hash);
+    if (index>=0) selectScene(index);
+    if (location.hash==='#start') document.getElementById('start').open=true;
+  }
+  window.addEventListener('hashchange',readHash);
+  document.addEventListener('visibilitychange',schedule);
+  preference.addEventListener('change',()=>{
+    playing=!preference.matches; updateView(); schedule();
+  });
+  for (const id of ['controls','stages','cases']) document.getElementById(id).hidden=false;
+  new IntersectionObserver(([entry])=>{ inView=entry.isIntersecting; schedule(); }).observe(field);
+  updateView(); readHash(); schedule();
+</script>
+</body>
+</html>
