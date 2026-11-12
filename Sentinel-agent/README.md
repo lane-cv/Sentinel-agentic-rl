@@ -6,7 +6,7 @@ Sentinel agent 是一个命令行故障诊断与修复工具。给它一份告�
 
 ## 安装与自检
 
-以下命令适用于 macOS 的终端，使用 Python 3.11。在项目根目录执行，后续示例沿用同一个虚拟环境。
+在 Agent 项目根目录打开 Bash，使用 Python 3.11 创建虚拟环境。后续示例在同一环境中运行。
 
 ```bash
 cd "$HOME/Desktop/Sentinel agent"
