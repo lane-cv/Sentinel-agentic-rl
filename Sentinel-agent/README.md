@@ -1,53 +1,76 @@
 # Sentinel agent
 
-Sentinel agent 是一个命令行故障诊断与修复工具。给它一份告警 JSON，诊断 Agent 会结合告警内容、排查手册和当前可用的监控数据，输出疑似故障服务、根因、证据和置信度。比如，同样是广告服务 CPU 升高，Agent 可以查询请求量和 CPU 指标，判断两者是否同步变化，再决定如何处置。
+Sentinel agent 是面向值班工程师的命令行故障诊断工具。输入一份告警 JSON，它会结合排查手册、监控指标和调用链，输出疑似根因、判断依据和处置建议。遇到代码回归时，修复 Agent 可以检出服务仓库、运行回归测试，并在验证通过后提交修复 PR。
 
-信息类告警直接生成报告。需要线上处置时，Agent 可以对允许的目标执行白名单内的操作，例如重启单个容器。需要人工判断或诊断置信度不足时，系统生成飞书卡片。对于代码缺陷，修复 Agent 可以检出目标仓库、修改代码、运行回归测试，并在验证通过后提交拉取请求（PR）。
+**[在线体验告警回放](https://lane-cv.github.io/Sentinel-agent/)** · [快速开始](#快速开始) · [故障演练](#故障演练) · [可选集成](#可选集成)
 
-## 安装与自检
+## 告警如何处置
 
-在 Agent 项目根目录打开 Bash，使用 Python 3.11 创建虚拟环境。后续示例在同一环境中运行。
+| 告警样例 | 诊断时看什么 | 预期处置 |
+| --- | --- | --- |
+| [商品目录流量上涨](alerts/s6_info.json) | 请求量比上周同期高约 3%，错误率和 p99 延迟仍在目标范围内 | 生成 `info_only` 报告 |
+| [广告服务 CPU 异常](alerts/s2.json) | 对齐请求量、CPU 和 p99 延迟的时间窗口，检查故障开关 | 仅对允许的目标执行白名单操作，其余交给值班人员 |
+| [推荐排序回归](alerts/s10_ranking.json) | 热门商品在发版后沉底。用相同输入验证排序方向 | 修改排序逻辑，验证目标用例通过且没有新增失败后提交 PR |
+
+仓库提供依赖故障、CPU 异常、内存泄漏和队列积压四份[排查手册](.claude/skills/)。诊断结果包含证据和置信度。置信度低于阈值（默认 `0.6`）时，系统将事件转交人工。诊断期间执行过的低风险操作会写入报告，便于值班人员复核。
+
+## 快速开始
+
+### 1. 安装并自检
+
+准备 Git、Python 3.11 和 Bash 兼容终端。已有本地仓库时，直接从项目根目录创建虚拟环境。
 
 ```bash
-cd "$HOME/Desktop/Sentinel agent"
+git clone https://github.com/lane-cv/Sentinel-agent.git
+cd Sentinel-agent
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+```
+
+安装依赖后，可以离线运行单测并检查 13 个评测场景引用的告警文件。
+
+```bash
 python -m pytest -q
 python -m eval.run --dry-run
 ```
 
-安装完成后，最后两条命令可以离线运行。单测应显示 `5 passed`。评测自检会逐项检查 13 个场景引用的告警文件，最后显示 `[eval] dry-run PASSED`。
+自检成功时，评测命令最后一行会显示 `[eval] dry-run PASSED`。
 
-## 运行第一次诊断
+### 2. 连接模型服务
 
-**配置模型。** 项目通过 Claude Agent SDK 调用支持 Anthropic Messages API 和工具调用的模型服务。先准备可访问的模型服务，再创建本机配置文件。已有 `.env` 时直接编辑即可。
+准备一个兼容 Anthropic Messages API 且支持工具调用的模型服务。从仓库根目录复制配置模板，再编辑 `.env`。终端中导出的同名变量优先。
 
 ```bash
 cp -n .env.example .env
 ```
 
-在 `.env` 中设置以下四项。程序启动时会自动读取，终端中已导出的同名变量优先。
-
-| 变量 | 如何填写 |
+| 变量 | 填写内容 |
 | --- | --- |
-| `AIOPS_LLM_BASE_URL` | 模型服务的根地址。示例值为 `http://localhost:8000`，应指向已启动的服务。 |
-| `AIOPS_MODEL` | 服务实际提供的模型名。模板中的 `opus` 需要与服务端配置匹配。 |
-| `AIOPS_LLM_API_KEY` | 服务使用 API Key 鉴权时填入密钥，否则将该项设为空值。 |
-| `AIOPS_LLM_AUTH_TOKEN` | 服务使用 Bearer Token 鉴权时填入令牌，否则将该项设为空值。 |
+| `AIOPS_LLM_BASE_URL` | 模型服务的根地址 |
+| `AIOPS_MODEL` | 服务端提供的模型名称 |
+| `AIOPS_LLM_API_KEY` / `AIOPS_LLM_AUTH_TOKEN` | 根据服务的鉴权方式填写 API Key 或 Bearer Token，将不用的一项留空 |
 
-**运行一个信息类告警。** 样例中的商品目录服务请求量小幅上涨，错误率和延迟仍在正常范围。这次运行临时关闭历史工单检索和自动线上处置，只需连接模型即可体验诊断流程。
+### 3. 运行第一条告警
+
+以下命令临时关闭历史工单检索和自动线上处置。用商品目录的流量样例即可体验诊断，无需启动 Docker 或配置 GitHub。
 
 ```bash
 AIOPS_RAG_ENABLED=0 AIOPS_REMEDIATION_ENABLED=0 \
   python -m agent.run --alert alerts/s6_info.json --json-out reports/s6_info.json
 ```
 
-终端会打印 `ROUTE` 和诊断摘要，完整报告写入 `reports/s6_info.json`。这个样例的预期路由是 `info_only`。查看 `diagnosis.evidence` 可了解模型引用了哪些证据。如果结果是 `feishu_low_confidence`，先看 `diagnosis.confidence` 和 `meta.degraded`，再检查模型地址、鉴权和结构化输出。`FEISHU_WEBHOOK_URL` 留空时，生成的卡片会打印到终端。
+这个样例的预期终端输出节选如下。
 
-## 用 Docker 复现 CPU 告警
+```text
+走向 ROUTE: info_only
+```
 
-要让 Agent 查到真实指标，可以启动 OpenTelemetry Demo 并注入广告服务 CPU 故障。先启动 Docker，确认 `git` 和 `docker compose` 可用，再从项目根目录执行。
+打开 `reports/s6_info.json`，先读 `diagnosis.evidence` 了解判断依据。如果路由为 `feishu_low_confidence`，再查看 `diagnosis.confidence` 和 `meta.degraded`，区分证据不足与模型调用失败。
+
+## 故障演练
+
+使用 Docker Compose 启动 OpenTelemetry Demo，给广告服务注入 CPU 故障。先启动 Docker，再在项目根目录执行以下命令。
 
 ```bash
 ./scripts/fetch-otel-demo.sh
@@ -56,26 +79,42 @@ docker compose ps
 ./scripts/inject.sh s2
 ```
 
-服务就绪后，让演示流量运行约 2–3 分钟，再执行诊断。Prometheus 默认监听 `localhost:9090`，Jaeger 监听 `localhost:16686`，flagd 的开关查询接口监听 `localhost:8016`。
+等演示流量运行约 2–3 分钟，再运行诊断。可以对照 Prometheus（`localhost:9090`）中的 CPU 和请求量、Jaeger（`localhost:16686`）中的慢调用，以及 flagd（`localhost:8016`）中的开关状态。[CPU 排查手册](.claude/skills/resource-cpu/SKILL.md)
 
 ```bash
 AIOPS_RAG_ENABLED=0 AIOPS_REMEDIATION_ENABLED=0 \
   python -m agent.run --alert alerts/s2.json --json-out reports/s2.json
 ```
 
-演示结束后，重置故障开关并停止容器。
+结束后重置故障开关并停止容器。
 
 ```bash
 ./scripts/reset.sh
 docker compose down
 ```
 
-## 评测与扩展
+## 场景评测
 
-- **评测诊断效果。** 配好模型后，运行 `python -m eval.run --only s6_info`，即可对照预期检查一次真实诊断。运行 `python -m eval.multi_run --only s6_info` 可重复评测，逐次结果和汇总指标会写入 `reports/`。场景及预期见 [eval/expected.json](eval/expected.json)。
-- **排查手册。** 诊断 Agent 从 `.claude/skills/` 加载四份手册，分别处理依赖故障、CPU 异常、内存泄漏和队列积压。可以从 [CPU 排查手册](.claude/skills/resource-cpu/SKILL.md) 查看上述示例的查询步骤。
-- **自动处置。** `AIOPS_REMEDIATION_ENABLED` 默认是 `1`，`AIOPS_REMEDIATION_TARGETS` 指定允许操作的服务。默认后端是 Docker，也支持 `AIOPS_BACKEND=k8s`。具体允许的命令见 [处置白名单](agent/core/remediation.py)。
-- **历史工单检索。** 在 `.env` 中设置 `AIOPS_RAG_ENABLED=1`，并提供可访问的 Milvus 和向量模型。上述 Compose 环境包含 Milvus，默认地址是 `http://localhost:19530`。首次使用需能加载 `BAAI/bge-small-zh-v1.5`。
-- **自动提交修复 PR（可选）。** 启用时，在 `.env` 中添加 `GITHUB_UPSTREAM_OWNER`（上游用户或组织）、`GITHUB_REPO`（仓库名）和有权限的 `GITHUB_TOKEN`。同仓提交时将 `GITHUB_FORK_OWNER` 留空，跨仓提交时填入 fork 的所有者。`GITHUB_DEFAULT_BRANCH` 默认是 `master`，应与目标分支一致。配置完成后，修复 Agent 会在 `workspace/` 下检出代码，验证修复后向上游发起 PR。入口见 [代码修复 Agent](agent/agents/code_fix.py)。
+连接模型后，用同一场景做单次检查或多轮评测。多轮结果写入 `reports/`，可用来比较路由准确率、修复验证结果和耗时。各场景的输入文件和预期路由见[评测清单](eval/expected.json)。
 
-初始化专用故障演练仓库时，`scripts/seed-github.sh` 从同一份 `.env` 读取仓库配置，使用已登录的 `gh` 账号创建或更新公开仓库，并强制推送演练历史。请将目标设为专门用于重建的仓库。
+```bash
+python -m eval.run --only s6_info
+python -m eval.multi_run --only s6_info
+```
+
+## 可选集成
+
+| 能力 | 如何启用 |
+| --- | --- |
+| 飞书通知 | 在 `.env` 设置 `FEISHU_WEBHOOK_URL` 接收人工复核卡片。留空时，卡片内容打印到终端。 |
+| 自动处置 | `AIOPS_REMEDIATION_ENABLED` 默认开启，`AIOPS_REMEDIATION_TARGETS` 指定允许操作的服务。默认后端为 Docker，使用 Kubernetes 时设置 `AIOPS_BACKEND=k8s`。[处置白名单](agent/core/remediation.py) |
+| 历史工单检索 | 开启 `AIOPS_RAG_ENABLED=1`，准备 Milvus 和向量模型。Compose 环境提供 Milvus（默认 `http://localhost:19530`），默认模型为 `BAAI/bge-small-zh-v1.5`。[工单存取实现](agent/integrations/memory.py) |
+
+<details>
+<summary><strong>在服务仓库提交修复 PR</strong></summary>
+
+在 `.env` 中添加 `GITHUB_UPSTREAM_OWNER`（目标仓库所属用户或组织）、`GITHUB_REPO`（仓库名）和有推送与创建 PR 权限的 `GITHUB_TOKEN`。同仓提交时将 `GITHUB_FORK_OWNER` 留空，通过 fork 提交时填入 fork 所属账号。`GITHUB_DEFAULT_BRANCH` 默认是 `master`，目标分支为 `main` 时需要显式设置。修复 Agent 在 `workspace/` 下检出代码并运行验证。[修复流程](agent/agents/code_fix.py)
+
+如需重建专用演练仓库，`scripts/seed-github.sh` 会读取同一份配置，使用已登录的 `gh` 账号创建或更新公开仓库，并强制推送演练历史。请将目标设为专门用于重建的仓库。
+
+</details>
